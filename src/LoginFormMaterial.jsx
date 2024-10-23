@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react';
 const schema = yup.object().shape({
   email: yup.string().email('Email inválido').required('Email es requerido'),
   password: yup.string().min(6, 'La contraseña debe tener al menos 6 caracteres').required('Contraseña es requerida'),
-  character: yup.string().required('Seleccione un personaje'), // Validación del campo select
+  character: yup.string().required('Seleccione un personaje'),
 });
 
 const LoginForm = () => {
@@ -18,22 +18,27 @@ const LoginForm = () => {
   });
 
   const [characters, setCharacters] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState(null);
 
-  // Llamada a la API para obtener personajes
   useEffect(() => {
     const fetchCharacters = async () => {
-      const response = await fetch('https://rickandmortyapi.com/api/character');
-      const data = await response.json();
-      setCharacters(data.results); // Guardar los personajes obtenidos
+      try {
+        const response = await fetch('https://rickandmortyapi.com/api/character');
+        const data = await response.json();
+        setCharacters(data.results);
+      } catch (error) {
+        setApiError('Error al cargar personajes');
+      } finally {
+        setLoading(false);
+      }
     };
-
     fetchCharacters();
   }, []);
 
-  // Al enviar el formulario
   const onSubmit = (data) => {
     console.log(data);
-    // Llamada a la API para login
+    // Aquí puedes hacer la llamada a la API para autenticar
   };
 
   return (
@@ -44,7 +49,7 @@ const LoginForm = () => {
           fullWidth
           {...register('email')}
           error={!!errors.email}
-          helperText={errors.email ? errors.email.message : ''}
+          helperText={errors.email?.message}
         />
         <TextField
           label="Contraseña"
@@ -52,28 +57,32 @@ const LoginForm = () => {
           fullWidth
           {...register('password')}
           error={!!errors.password}
-          helperText={errors.password ? errors.password.message : ''}
+          helperText={errors.password?.message}
         />
-        
-        {/* Campo Select que obtiene los personajes de la API */}
+
         <FormControl fullWidth error={!!errors.character}>
           <InputLabel>Personaje</InputLabel>
           <Select
             label="Personaje"
-            {...register('character')}
-            onChange={(e) => setValue('character', e.target.value)} // Actualizar el valor en el formulario
+            defaultValue="" // Valor predeterminado vacío
+            {...register('character')} // Registrar campo en el formulario
+            onChange={(e) => setValue('character', e.target.value)} // Actualiza el valor en el formulario
+            disabled={loading || apiError} // Deshabilitar si hay error o se está cargando
           >
+            <MenuItem value="">
+              <em>Seleccione un personaje</em>
+            </MenuItem>
             {characters.map((character) => (
               <MenuItem key={character.id} value={character.name}>
                 {character.name}
               </MenuItem>
             ))}
           </Select>
-          <FormHelperText>{errors.character ? errors.character.message : ''}</FormHelperText>
+          <FormHelperText>{errors.character?.message || apiError}</FormHelperText>
         </FormControl>
 
-        <Button type="submit" variant="contained" color="primary" fullWidth>
-          Enviar
+        <Button type="submit" variant="contained" color="primary" fullWidth disabled={loading}>
+          {loading ? 'Cargando...' : 'Iniciar Sesión'}
         </Button>
       </form>
     </div>
