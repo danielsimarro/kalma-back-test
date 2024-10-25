@@ -12,6 +12,10 @@ import Paper from '@mui/material/Paper';
 import Checkbox from '@mui/material/Checkbox';
 import Button from '@mui/material/Button';
 import TextField from '@mui/material/TextField';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
+import InputLabel from '@mui/material/InputLabel';
+import FormControl from '@mui/material/FormControl';
 import { visuallyHidden } from '@mui/utils';
 
 // Función debounce para retrasar la ejecución de la búsqueda hasta que el usuario deje de escribir
@@ -29,35 +33,16 @@ function debounce(fn, delay) {
 
 // Definimos los encabezados de la tabla
 const headCells = [
-  {
-    id: 'name',
-    numeric: false,
-    disablePadding: true,
-    label: 'Pokémon Name',
-  },
-  {
-    id: 'height',
-    numeric: true,
-    disablePadding: false,
-    label: 'Height',
-  },
-  {
-    id: 'weight',
-    numeric: true,
-    disablePadding: false,
-    label: 'Weight',
-  },
-  {
-    id: 'types',
-    numeric: false,
-    disablePadding: false,
-    label: 'Types',
-  },
+  { id: 'name', numeric: false, disablePadding: true, label: 'Pokémon Name' },
+  { id: 'height', numeric: true, disablePadding: false, label: 'Height' },
+  { id: 'weight', numeric: true, disablePadding: false, label: 'Weight' },
+  { id: 'types', numeric: false, disablePadding: false, label: 'Types' },
 ];
 
-// Componente para renderizar los encabezados de la tabla
+// Componente para renderizar los encabezados de la tabla con ordenación
 function EnhancedTableHead(props) {
-  const { order, orderBy, onRequestSort, onSelectAllClick, rowCount, numSelected } = props;
+  const { order, orderBy, onRequestSort, rowCount, numSelected, onSelectAllClick } = props;
+
   const createSortHandler = (property) => (event) => {
     onRequestSort(event, property);
   };
@@ -108,15 +93,16 @@ export default function PokemonTable() {
   const [rows, setRows] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [selected, setSelected] = React.useState([]);
-  const [searchQuery, setSearchQuery] = React.useState(''); // Estado para el input de búsqueda
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [pokemonTypes, setPokemonTypes] = React.useState([]); // Estado para tipos de Pokémon
+  const [selectedType, setSelectedType] = React.useState(''); // Estado para el tipo seleccionado
   const [error, setError] = React.useState(null);
 
-  // Función para realizar la búsqueda o paginación
-  const fetchPokemonDetails = async (search) => {
+  // Función para realizar la búsqueda o paginación con el filtro de tipo
+  const fetchPokemonDetails = async (search = '', orderBy = 'name', order = 'asc', type = '') => {
     setLoading(true);
     try {
       let data;
-      // Si hay una búsqueda activa, buscamos el Pokémon por nombre
       if (search) {
         const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${search.toLowerCase()}`);
         if (!response.ok) throw new Error('Pokémon no encontrado');
@@ -129,8 +115,24 @@ export default function PokemonTable() {
             types: pokemonData.types.map((typeInfo) => typeInfo.type.name).join(', '),
           },
         ];
+      } else if (type) {
+        // Filtrado por tipo
+        const response = await fetch(`https://pokeapi.co/api/v2/type/${type}`);
+        const typeData = await response.json();
+        data = await Promise.all(
+          typeData.pokemon.slice(0, rowsPerPage).map(async ({ pokemon }) => {
+            const pokemonResponse = await fetch(pokemon.url);
+            const pokemonData = await pokemonResponse.json();
+            return {
+              name: pokemonData.name,
+              height: pokemonData.height,
+              weight: pokemonData.weight,
+              types: pokemonData.types.map((typeInfo) => typeInfo.type.name).join(', '),
+            };
+          })
+        );
       } else {
-        // Si no hay búsqueda, hacemos la paginación por defecto
+        // Paginación sin filtro
         const response = await fetch(
           `https://pokeapi.co/api/v2/pokemon?offset=${page * rowsPerPage}&limit=${rowsPerPage}`
         );
@@ -148,6 +150,8 @@ export default function PokemonTable() {
           })
         );
       }
+
+      data.sort((a, b) => (order === 'asc' ? (a[orderBy] < b[orderBy] ? -1 : 1) : (a[orderBy] > b[orderBy] ? -1 : 1)));
       setRows(data);
       setError(null);
     } catch (error) {
@@ -157,17 +161,28 @@ export default function PokemonTable() {
     setLoading(false);
   };
 
-  // Llamada a la API cuando se monta el componente y cuando cambian page o rowsPerPage
+  // Llamada a la API cuando se monta el componente y cuando cambian page, rowsPerPage, orderBy, order, o selectedType
   React.useEffect(() => {
     if (!searchQuery) {
-      fetchPokemonDetails(''); // Si no hay búsqueda, hacemos paginación normal
+      fetchPokemonDetails('', orderBy, order, selectedType);
     }
-  }, [page, rowsPerPage]); // Excluimos searchQuery para no hacer la búsqueda cuando no es necesario
+  }, [page, rowsPerPage, orderBy, order, selectedType]);
+
+  // Obtener tipos de Pokémon cuando el componente se monta
+  React.useEffect(() => {
+    const fetchTypes = async () => {
+      const response = await fetch('https://pokeapi.co/api/v2/type');
+      const data = await response.json();
+      setPokemonTypes(data.results);
+    };
+    fetchTypes();
+  }, []);
 
   const handleRequestSort = (event, property) => {
     const isAsc = orderBy === property && order === 'asc';
     setOrder(isAsc ? 'desc' : 'asc');
     setOrderBy(property);
+    fetchPokemonDetails(searchQuery, property, isAsc ? 'desc' : 'asc', selectedType);
   };
 
   const handleChangePage = (event, newPage) => {
@@ -181,7 +196,7 @@ export default function PokemonTable() {
 
   const handleSelectAllClick = (event) => {
     if (event.target.checked) {
-      const newSelecteds = rows.map((n) => n.name); // Solo selecciona los Pokémon visibles en la página actual
+      const newSelecteds = rows.map((n) => n.name);
       setSelected(newSelecteds);
       return;
     }
@@ -199,10 +214,7 @@ export default function PokemonTable() {
     } else if (selectedIndex === selected.length - 1) {
       newSelected = newSelected.concat(selected.slice(0, -1));
     } else if (selectedIndex > 0) {
-      newSelected = newSelected.concat(
-        selected.slice(0, selectedIndex),
-        selected.slice(selectedIndex + 1)
-      );
+      newSelected = newSelected.concat(selected.slice(0, selectedIndex), selected.slice(selectedIndex + 1));
     }
     setSelected(newSelected);
   };
@@ -213,12 +225,16 @@ export default function PokemonTable() {
 
   const isSelected = (name) => selected.indexOf(name) !== -1;
 
-  // Función debounce para la búsqueda
   const handleSearchChange = debounce((event) => {
     setSearchQuery(event.target.value);
-    setPage(0); // Resetea la página a 0 cuando se realiza una búsqueda
-    fetchPokemonDetails(event.target.value); // Llamada a la función de búsqueda con el término ingresado
-  }, 1000); // 500ms de retraso
+    setPage(0);
+    fetchPokemonDetails(event.target.value, orderBy, order, selectedType);
+  }, 500);
+
+  const handleTypeChange = (event) => {
+    setSelectedType(event.target.value);
+    setPage(0); // Resetear la página a 0 al cambiar el filtro
+  };
 
   return (
     <Box sx={{ width: '100%', padding: '20px' }}>
@@ -228,14 +244,22 @@ export default function PokemonTable() {
           variant="outlined"
           fullWidth
           sx={{ marginBottom: '20px' }}
-          onChange={handleSearchChange} // Manejador del input de búsqueda con debounce
+          onChange={handleSearchChange}
         />
-        <Button
-          variant="contained"
-          color="primary"
-          onClick={handleShowSelected}
-          sx={{ marginBottom: '10px' }}
-        >
+        <FormControl fullWidth sx={{ marginBottom: '20px' }}>
+          <InputLabel>Filtrar por Tipo</InputLabel>
+          <Select value={selectedType} onChange={handleTypeChange} label="Filtrar por Tipo">
+            <MenuItem value="">
+              <em>Todos</em>
+            </MenuItem>
+            {pokemonTypes.map((type) => (
+              <MenuItem key={type.name} value={type.name}>
+                {type.name}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <Button variant="contained" color="primary" onClick={handleShowSelected} sx={{ marginBottom: '10px' }}>
           Mostrar Seleccionados
         </Button>
         {error ? (
@@ -274,13 +298,7 @@ export default function PokemonTable() {
                         selected={isItemSelected}
                       >
                         <TableCell padding="checkbox">
-                          <Checkbox
-                            color="primary"
-                            checked={isItemSelected}
-                            inputProps={{
-                              'aria-labelledby': labelId,
-                            }}
-                          />
+                          <Checkbox color="primary" checked={isItemSelected} inputProps={{ 'aria-labelledby': labelId }} />
                         </TableCell>
                         <TableCell component="th" id={labelId} scope="row" padding="none">
                           {row.name}
@@ -296,11 +314,11 @@ export default function PokemonTable() {
             </Table>
           </TableContainer>
         )}
-        {!searchQuery && ( // Solo mostramos la paginación si no hay búsqueda activa
+        {!searchQuery && (
           <TablePagination
             rowsPerPageOptions={[5, 10, 25]}
             component="div"
-            count={100} // Se establece en 100, pero puede ajustarse según lo que necesites
+            count={100}
             rowsPerPage={rowsPerPage}
             page={page}
             onPageChange={handleChangePage}
